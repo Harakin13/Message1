@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#05030d">
+  <title>Dreamwave Galaxy Message - Template</title>
+  <script>
+    window.console = window.console || function(t) {};
+    // Если через N секунд загрузка не завершилась (модули не скачались,
+    // WebGL не поддерживается, CORS на content://file:// и т.п.) —
+    // показываем аккуратный статичный фон вместо чёрного экрана.
+    window.__galaxyFallbackTimer = setTimeout(function () {
+      var loading = document.getElementById('loading');
+      if (loading && loading.style.opacity !== '0') {
+        document.body.classList.add('fallback-bg');
+        loading.style.opacity = '0';
+      }
+    }, 4000);
+  </script>
+  <style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #000;
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        /* touch-action: pan-y тут не нужен — скролл идёт внутри #text-overlay,
+           но на всякий случай убираем "резиновый" bounce на iOS */
+        overscroll-behavior: none;
+    }
+    /* Фоллбэк-фон, если WebGL/Three.js не смогли загрузиться */
+    body.fallback-bg {
+        background: radial-gradient(ellipse 120% 80% at 50% 20%, #241536 0%, #0c0818 45%, #05030d 100%);
+    }
+    #canvas-container {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh; /* учитывает адресную строку мобильного браузера */
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 1;
+    }
+    #loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 1.2rem;
+        letter-spacing: 2px;
+        pointer-events: none;
+        transition: opacity 0.5s ease;
+        z-index: 2;
+    }
+    
+    /* Стили для текстовой панели (Glassmorphism) */
+    #text-overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        max-width: 800px;
+        max-height: 80vh;
+        max-height: 80dvh; /* учитывает адресную строку мобильного браузера */
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        
+        /* Эффект стекла */
+        background: rgba(15, 15, 25, 0.65);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        
+        color: #f1f1f1;
+        padding: 40px;
+        padding-bottom: max(40px, env(safe-area-inset-bottom));
+        z-index: 10;
+        line-height: 1.7;
+        font-size: 1.15rem;
+        box-sizing: border-box;
+        transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    /* Состояние "закрыто" крестиком — панель прячется, космос открыт целиком */
+    #text-overlay.is-hidden {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.96);
+        pointer-events: none;
+    }
+
+    /* Подсказка, что панель можно скроллить — иначе на телефоне это не видно,
+       кастомный webkit-скроллбар на мобильном Chrome/Safari не отображается */
+    #scroll-hint {
+        position: absolute;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        color: rgba(255, 255, 255, 0.55);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+        animation: hintBounce 1.6s ease-in-out infinite;
+    }
+    #scroll-hint.visible { opacity: 1; }
+    @keyframes hintBounce {
+        0%, 100% { transform: translateX(-50%) translateY(0); }
+        50% { transform: translateX(-50%) translateY(4px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        #scroll-hint { animation: none; }
+    }
+
+    #text-overlay p {
+        margin-top: 0;
+        margin-bottom: 20px;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    }
+
+    #text-overlay p:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Кастомный красивый скроллбар для текста */
+    #text-overlay::-webkit-scrollbar {
+        width: 8px;
+    }
+    #text-overlay::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        margin: 10px 0;
+    }
+    #text-overlay::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.25);
+        border-radius: 10px;
+    }
+    #text-overlay::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.4);
+    }
+
+    @media (max-width: 600px) {
+        #text-overlay {
+            width: 92%;
+            padding: 25px;
+            font-size: 1.05rem;
+            max-height: 85vh;
+            max-height: 85dvh;
+        }
+    }
+
+    /* Кнопка-крестик: закрывает панель с текстом и открывает космос на весь
+       экран. Стоит поверх всего, докована к правому нижнему углу — не ребёнок
+       #text-overlay, чтобы не пропадать вместе с ней при закрытии. */
+    #cosmos-toggle {
+        position: fixed;
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 15, 25, 0.65);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+        color: #f1f1f1;
+        cursor: pointer;
+        z-index: 20;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+        transition: transform 0.2s ease, background 0.3s ease;
+    }
+    #cosmos-toggle:active { transform: scale(0.9); }
+    #cosmos-toggle svg {
+        display: block;
+        transform: rotate(90deg);
+        transition: transform 0.35s cubic-bezier(.34, 1.56, .64, 1);
+    }
+    /* Крестик поворачивается в плюсик — понятный намёк "нажми, чтобы вернуть" */
+    #cosmos-toggle.is-closed svg { transform: rotate(135deg); }
+
+    /* Подсказка-стрелка рядом с крестиком: чисто обучающая, не кликабельна,
+       исчезает после первого нажатия или сама через несколько секунд. */
+    #cosmos-toggle-hint {
+        position: fixed;
+        right: 74px;
+        bottom: 24px;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 0.78rem;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+        pointer-events: none;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+        opacity: 1;
+        transition: opacity 0.5s ease;
+    }
+    #cosmos-toggle-hint.hidden { opacity: 0; }
+    #cosmos-toggle-hint .hint-arrow {
+        font-size: 1.1rem;
+        animation: hintNudge 1.6s ease-in-out infinite;
+    }
+    @keyframes hintNudge {
+        0%, 100% { transform: translate(0, 0); }
+        50% { transform: translate(4px, 0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        #cosmos-toggle-hint .hint-arrow { animation: none; }
+    }
+    @media (max-width: 380px) {
+        #cosmos-toggle-hint .hint-text { display: none; }
+    }
+  </style>
+</head>
+
+<body translate="no">
+
+<!-- Текстовый блок поверх космоса -->
+<div id="text-overlay">
+    <p>Слушай, отставить извинения! Это абсолютно нормально, ведь на тебя столько всего навалилось!</p>
+    <p>То, что мама тебя с ним сравнивает - это классика, так называемая мамкина прошивка, у всех родителей такое есть, у моих тоже, так что просто забей)</p>
+    <p>Главное, что ты общаешься со своим другом, а этот Главнюк с синдромом главГада пусть хоть обвешается своими пятерками. Не парься из-за него. Если что, просто отстраненно наблюдай за ними, ну или можешь в диалог вступать - ты самое главное не показывай сильно, что он тебя до глубины души бесит!!! Нууу или если он ТВОЙ лучший друг, то можешь насчет этого с ним переговорить;)</p>
+    
+    <p>И вообще, не переживай ты ТАК за эти оценки! Да, по сути они нужны чисто для галочки, чтобы поступить в какой-нибудь крутой универ или куда хочешь, но мир точно не рухнет из-за плохой цифры в журнале!!! Тебе надо гордиться тем, что у тебя есть НЕСТАНДАРТНОЕ мышление, милая, в нашем мире это реально О-ГО-ГО!!! Знаешь ли~</p>
+    
+    <p>А чтобы система тебя окончательно не добила этими ВПР и Математичкой 2.0, у меня для тебя есть легальный чит-код. Слышала про Gemini, NotebookLM и другие ИИшки? Они буквально спасают жизни. Скармливаешь им тему, а они тебе делают конспекты, разжевывают сложные правила и решают всякую рутину. К примеру, одну и ту же тему в математике можно решать например СНГшной методичкой (нашей), а можно и другой, что полегче, и даже комбинировать-с!!! (Я так делал и для меня это стало ЧИТИЩЕМ!!!). Ничего страшного в них нет, я тебе потом покажу, как это работает - будешь тратить на эту школьную дичь в два раза меньше времени.</p>
+    
+    <p>Вообще, читая всё это, понял одно - я так соскучился по твоей сладкой попке... 😏 (Ну то есть, по тебееее естественно 😉)</p>
+    <p>Кхм, ладно, отвлекся! А пока я тут скучаю, меня местная жизнь имеет во все дыр... кхм, проверяет на прочность! Прикинь, местные продавцы смотрят на меня ТАК, будто у меня на лбу бегущей строкой светится "Л-О-Ш-А-Р-А" - впаривают всё в два, а то и в тридорога! А универ - это отдельный мем. Преподы сами прогуливают пары! (Если что, пара - это два урока подряд). Не я прогуливаю, а они! Значит сидим, пердим (в основном Я) и ждем их... А ОНИ НЕ ПРИХОДЯТ!!! НУ ЧТО ЗА ДЕЛА?!?!?!</p>
+    <p>Но самый экстрим - это наш местный душ. Вода там чисто рандом: температура скачет между кипящим котлом в аду и ледниками Антарктиды. Короче, весело живьем. Главное правило выживания, которое я тут усвоил - мыло лучше не ронять, особенно в душе! 😂</p>
+    <p>Держись там, прорвемся, мы оба прорвемся! Если что зови, и я приду на помощь!)) 💓</p>
+    <p>P.S: Если нажмешь на X снизу то можно покрутиться в космосе вниз-вверх, право-лево, ну ты поняла?))</p>
+    <div id="scroll-hint">↓ прокрути ↓</div>
+</div>
+
+<div id="cosmos-toggle-hint">
+    <span class="hint-text">жми ✕ и свайпай</span>
+    <span class="hint-arrow" aria-hidden="true">→</span>
+</div>
+<button id="cosmos-toggle" type="button" aria-label="Закрыть текст и посмотреть на космос" title="Закрыть текст и посмотреть на космос">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <line x1="5" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        <line x1="19" y1="5" x2="5" y2="19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+</button>
+
+<script>
+    // Подсказку про скролл показываем только если текст реально не влезает
+    // в панель, и прячем после первого же скролла — не мозолит глаза дальше.
+    (function () {
+        const overlay = document.getElementById('text-overlay');
+        const hint = document.getElementById('scroll-hint');
+        if (!overlay || !hint) return;
+        function check() {
+            if (overlay.scrollHeight - overlay.clientHeight > 20) {
+                hint.classList.add('visible');
+            } else {
+                hint.classList.remove('visible');
+            }
+        }
+        window.addEventListener('load', check);
+        window.addEventListener('resize', check);
+        overlay.addEventListener('scroll', () => hint.classList.remove('visible'), { once: true });
+    })();
+
+    // Крестик закрывает/открывает текстовую панель. Когда она закрыта —
+    // отдаём свайпу полный контроль над камерой (см. window.__galaxySetTouchRotate
+    // в модульном скрипте ниже), чтобы можно было двигать космос пальцем
+    // в любую сторону — вверх/вниз/влево/вправо.
+    (function () {
+        const btn = document.getElementById('cosmos-toggle');
+        const hint = document.getElementById('cosmos-toggle-hint');
+        const overlay = document.getElementById('text-overlay');
+        if (!btn || !overlay) return;
+
+        let isOpen = true;
+
+        function setOpen(open) {
+            isOpen = open;
+            overlay.classList.toggle('is-hidden', !open);
+            btn.classList.toggle('is-closed', !open);
+            const label = open ? 'Закрыть текст и посмотреть на космос' : 'Открыть сообщение';
+            btn.setAttribute('aria-label', label);
+            btn.title = label;
+            if (window.__galaxySetTouchRotate) window.__galaxySetTouchRotate(!open);
+            if (hint) hint.classList.add('hidden');
+        }
+
+        btn.addEventListener('click', () => setOpen(!isOpen));
+        setTimeout(() => { if (hint) hint.classList.add('hidden'); }, 6000);
+    })();
+</script>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/"
+        }
+    }
+</script>
+
+<div id="loading">GENERATING UNIVERSE...</div>
+<div id="canvas-container"></div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Загрузка успешно стартовала — отменяем фоллбэк-таймер из <head>
+    if (window.__galaxyFallbackTimer) clearTimeout(window.__galaxyFallbackTimer);
+
+    // Определяем "слабое" touch-устройство по типу указателя, а не по User-Agent —
+    // так честнее ловим и бюджетные Android, и iPad с мышью/трекпадом отдельно.
+    const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    
+    const universe = new THREE.Group();
+    scene.add(universe);
+    
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(0, 0, 100);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: !isCoarsePointer, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isCoarsePointer ? 1.5 : 2));
+    container.appendChild(renderer.domElement);
+
+    const clock = new THREE.Clock();
+
+    const bgVertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const bgFragmentShader = `
+        uniform float uTime;
+        varying vec2 vUv;
+
+        float hash(vec2 p) { 
+            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); 
+        }
+        
+        float noise(vec2 p) {
+            vec2 i = floor(p); 
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                       mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+        }
+        
+        float fbm(vec2 p) {
+            float v = 0.0; 
+            float a = 0.5;
+            for (int i = 0; i < 5; i++) {
+                v += a * noise(p); 
+                p *= 2.0; 
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        void main() {
+            vec2 uv = vUv * 2.0;
+            float t = uTime * 0.02;
+
+            float equator = smoothstep(0.4, 0.0, abs(vUv.y - 0.5));
+
+            float n1 = fbm(uv * 3.0 + vec2(t, t));
+            float n2 = fbm(uv * 5.0 - vec2(t * 1.2, t * 0.8) + n1);
+
+            vec3 baseSpace = vec3(0.005, 0.0, 0.015);
+            vec3 color1 = vec3(0.15, 0.02, 0.25);
+            vec3 color2 = vec3(0.02, 0.12, 0.25);
+            vec3 starBand = vec3(0.1, 0.08, 0.05);
+
+            vec3 finalColor = baseSpace;
+            
+            finalColor += color1 * n1 * (0.4 + 0.6 * equator);
+            finalColor += color2 * n2 * (0.4 + 0.4 * equator);
+            finalColor += starBand * equator * (n1 * n2) * 2.0;
+
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    `;
+
+    const bgGeometry = new THREE.SphereGeometry(1000, 32, 32);
+    const bgMaterial = new THREE.ShaderMaterial({
+        vertexShader: bgVertexShader,
+        fragmentShader: bgFragmentShader,
+        uniforms: { uTime: { value: 0 } },
+        side: THREE.BackSide,
+        depthWrite: false
+    });
+    const nebulaMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+    universe.add(nebulaMesh);
+
+    // На телефоне 65 000 частиц + доп. blur-слой — верный способ посадить GPU
+    // и телефон нагреть. На coarse-pointer устройствах режем втрое.
+    const particleCount = isCoarsePointer ? 22000 : 65000;
+    const starGeometry = new THREE.BufferGeometry();
+    
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
+    const phases = new Float32Array(particleCount);
+    const twinkleSpeeds = new Float32Array(particleCount);
+
+    const colorPalette = [
+        '#ff1e4a',
+        '#23ff4b',
+        '#2a6fff',
+        '#ffd900',
+        '#ff00ea',
+        '#00ffea',
+        '#ffffff',
+        '#ff8800'
+    ].map(c => new THREE.Color(c));
+
+    const radius = 800;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const r = radius * Math.cbrt(Math.random());
+        const theta = Math.random() * 2 * Math.PI;
+        const phi = Math.acos(2 * Math.random() - 1);
+        
+        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+
+        const baseColor = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+        const color = baseColor.clone().lerp(new THREE.Color(0xffffff), Math.random() * 0.2);
+        
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+
+        sizes[i] = Math.pow(Math.random(), 7.0) * 20.0 + 1.0; 
+        
+        phases[i] = Math.random() * Math.PI * 2;
+        twinkleSpeeds[i] = Math.random() * 4.0 + 0.5;
+    }
+
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starGeometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
+    starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    starGeometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+    starGeometry.setAttribute('twinkleSpeed', new THREE.BufferAttribute(twinkleSpeeds, 1));
+
+    const starVertexShader = `
+        uniform float uTime;
+        uniform float uPixelRatio;
+
+        attribute float size;
+        attribute float phase;
+        attribute float twinkleSpeed;
+        attribute vec3 customColor;
+
+        varying vec3 vColor;
+        varying float vTwinkle;
+
+        void main() {
+            vColor = customColor;
+
+            float t = uTime * twinkleSpeed + phase;
+            float wave = sin(t) * 0.5 + 0.5;
+            
+            float flash = pow(wave, 10.0) * 2.5; 
+            float basePulse = 0.15 + wave * 0.3;
+            
+            vTwinkle = basePulse + flash;
+
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+
+            float dist = length(mvPosition.xyz);
+            gl_PointSize = size * uPixelRatio * (600.0 / dist) * vTwinkle;
+        }
+    `;
+
+    const starFragmentShader = `
+        varying vec3 vColor;
+        varying float vTwinkle;
+
+        void main() {
+            vec2 uv = gl_PointCoord.xy * 2.0 - 1.0;
+            float d = length(uv);
+
+            float rayX = exp(-abs(uv.x) * 30.0) * exp(-abs(uv.y) * 1.0);
+            float rayY = exp(-abs(uv.y) * 30.0) * exp(-abs(uv.x) * 1.0);
+
+            float core = exp(-d * 15.0);
+            float halo = exp(-d * 4.0) * 0.5;
+
+            float alpha = (rayX + rayY) * 0.8 + core + halo;
+
+            alpha *= smoothstep(1.0, 0.1, d);
+
+            if (alpha < 0.02) discard;
+
+            vec3 finalColor = mix(vColor, vec3(1.0), core * 0.9);
+
+            gl_FragColor = vec4(finalColor, alpha * min(vTwinkle, 2.5));
+        }
+    `;
+
+    const starMaterial = new THREE.ShaderMaterial({
+        vertexShader: starVertexShader,
+        fragmentShader: starFragmentShader,
+        uniforms: {
+            uTime: { value: 0.0 },
+            uPixelRatio: { value: renderer.getPixelRatio() }
+        },
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    const starMesh = new THREE.Points(starGeometry, starMaterial);
+    universe.add(starMesh);
+
+    document.getElementById('loading').style.opacity = '0';
+
+    let mouseX = 0;
+    let mouseY = 0;
+    
+    document.addEventListener('mousemove', (event) => {
+        mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enablePan = false;
+    controls.enableZoom = !isCoarsePointer;
+    controls.enableRotate = !isCoarsePointer;
+    controls.autoRotate = !prefersReducedMotion;
+    controls.autoRotateSpeed = 0.4;
+    // На телефоне свайп по фону не должен вращать сцену — весь тач-жест
+    // должен доставаться скроллу текстовой панели. Фон при этом продолжает
+    // мягко вращаться сам по себе через autoRotate.
+    if (isCoarsePointer) {
+        controls.touches.ONE = null;
+        controls.touches.TWO = null;
+    }
+
+    // Вызывается из кнопки-крестика (inline-скрипт выше). Когда текстовая
+    // панель закрыта — отдаём пальцу полный контроль над камерой: вращение
+    // одним пальцем + пинч-зум двумя. Когда открыта — снова забираем управление,
+    // чтобы свайп по тексту не дёргал галактику.
+    window.__galaxySetTouchRotate = function (enabled) {
+        if (!isCoarsePointer) return; // на мыши/трекпаде свайп и так не мешает скроллу
+        controls.enableRotate = enabled;
+        controls.enableZoom = enabled;
+        controls.touches.ONE = enabled ? THREE.TOUCH.ROTATE : null;
+        controls.touches.TWO = enabled ? THREE.TOUCH.DOLLY_PAN : null;
+    };
+
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        starMaterial.uniforms.uPixelRatio.value = Math.min(window.devicePixelRatio, isCoarsePointer ? 1.5 : 2);
+    }
+
+    let rafId = null;
+
+    // Ставим рендер на паузу, когда вкладка/приложение свёрнуты —
+    // иначе WebGL продолжает молотить и сажать батарею в фоне.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+        } else if (rafId === null) {
+            animate();
+        }
+    });
+
+    function animate() {
+        rafId = requestAnimationFrame(animate);
+
+        const elapsedTime = clock.getElapsedTime();
+
+        starMaterial.uniforms.uTime.value = elapsedTime;
+        bgMaterial.uniforms.uTime.value = elapsedTime;
+
+        universe.rotation.x += (mouseY * 0.08 - universe.rotation.x) * 0.05;
+        universe.rotation.y += (mouseX * 0.08 - universe.rotation.y) * 0.05;
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    animate();
+</script>
+</body>
+</html>
